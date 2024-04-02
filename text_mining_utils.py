@@ -15,6 +15,16 @@ from sklearn.metrics import classification_report
 from sklearn.model_selection import cross_val_predict 
 import wordcloud 
 
+from sklearn.cluster import KMeans
+from sklearn.cluster import AgglomerativeClustering
+from scipy.cluster.hierarchy import dendrogram, linkage
+from pandas.plotting import parallel_coordinates
+
+from sklearn.feature_selection import GenericUnivariateSelect
+from sklearn.feature_selection import SelectFromModel
+from sklearn.feature_selection import SequentialFeatureSelector
+from sklearn.feature_selection import RFECV
+
 
 #############################################
 ############ text visualisations ############
@@ -115,6 +125,43 @@ def printClassifReport(clf, X, y, folds=5):
     print(classification_report(y, predictions)) 
 
 
+"""function to train and x-validate across acc, rec, prec  
+for 3 different matrices and plot them"""
+def plot_avg_performance_for_3matrices(clf, clf_name,matrices, matrices_names, y, cv=5):
+  from sklearn.metrics import classification_report
+  from sklearn.model_selection import cross_val_predict   
+  results = [classification_report(cross_val_predict(clf, matrix, y, cv=5), y, output_dict=True) for matrix in matrices]
+  labels = ['accuracy', 'precision', 'recall']
+  x = np.arange(len(labels)) ; width = 0.25 ; fig, ax = plt.subplots()
+  rects1 = ax.bar(x , [results[0]['accuracy'], results[0]['macro avg']['precision'], results[0]['macro avg']['recall']], width, label=matrices_names[0])
+  #ax.bar_label(rects1, padding=3)
+  rects2 = ax.bar(x + width,  [results[1]['accuracy'], results[1]['macro avg']['precision'], results[1]['macro avg']['recall']], width, label=matrices_names[1])
+  #ax.bar_label(rects2, padding=3)
+  rects3 = ax.bar(x + width*2, [results[2]['accuracy'], results[2]['macro avg']['precision'], results[2]['macro avg']['recall']], width, label=matrices_names[2])
+  #ax.bar_label(rects3, padding=3)
+  ax.set_ylabel('Scores') 
+  ax.set_title('Cross Validation Scores across 3 different matrices using a ' + clf_name)
+  ax.set_xticks(x + width); ax.set_xticklabels(labels)
+  ax.legend(); fig.tight_layout(); plt.show()
+
+"""function to train and x-validate across acc, rec, prec  
+and across 3 different classifiers and plot them"""
+def plot_avg_performance_across_3clfs(clfs, clf_names, matrix, matrix_name, y, cv=5):
+  results = [classification_report(cross_val_predict(clf, matrix, y, cv=5), y, output_dict=True) for clf in clfs]
+  labels = ['accuracy', 'precision', 'recall']
+  x = np.arange(len(labels)) ; width = 0.25 ; fig, ax = plt.subplots()
+  rects1 = ax.bar(x , [results[0]['accuracy'], results[0]['macro avg']['precision'], results[0]['macro avg']['recall']], width, label=clf_names[0])
+  #ax.bar_label(rects1, padding=3)
+  rects2 = ax.bar(x + width,  [results[1]['accuracy'], results[1]['macro avg']['precision'], results[1]['macro avg']['recall']], width, label=clf_names[1])
+  #ax.bar_label(rects2, padding=3)
+  rects3 = ax.bar(x + width*2, [results[2]['accuracy'], results[2]['macro avg']['precision'], results[2]['macro avg']['recall']], width, label=clf_names[2])
+  #ax.bar_label(rects3, padding=3)
+  ax.set_ylabel('Scores') 
+  ax.set_title('Cross Validation Scores across 3 different classifiers trained on ' + matrix_name)
+  ax.set_xticks(x + width); ax.set_xticklabels(labels)
+  ax.legend(); fig.tight_layout(); plt.show()
+
+
 #########################################################
 ############# word stats functions ######################
 ## function to print the n most frequent tokens in a text belonging to a given topic
@@ -150,3 +197,143 @@ def resolve_contractions(doc, contr_dict):
         doc = re.sub(key, value, doc) 
     return doc 
 
+## function to carry out concept typing, resolve synonyms and word variations
+def improve_bow(doc, repl_dict):
+    for key in repl_dict.keys():
+        for item in repl_dict[key]:
+            doc = re.sub(item, key, doc, flags=re.IGNORECASE)
+    return doc
+
+## function to remove tokens using POS  tags
+def remove_terms_by_POS(doc, tags_to_remove):
+    tagged_doc = nltk.pos_tag(nltk.word_tokenize(doc)) ## (sea, 'NN')
+    new_doc = [pair[0] for pair in tagged_doc if pair[1] not in tags_to_remove]
+    new_doc = ' '.join(new_doc)
+    ## replace space before punctuation sign
+    return re.sub(r' (?=[!\.,?:;])', "", new_doc)
+
+## function to lower case at the beginning of the sentence only
+def lower_at_begining(doc):
+    sents = nltk.sent_tokenize(doc)
+    ##tokenised_sents = [nltk.word_tokenize(token) in sent for sent in sents]##
+    tokenised_sents = [re.sub(sent[0], sent[0].lower(), sent)
+                       for sent in sents]
+    return ' '.join(tokenised_sents)
+
+## function to remove stop words and/or punctuation
+def remove_sw_punct(doc, to_remove):
+    tokens = nltk.word_tokenize(doc)
+    return re.sub(r' (?=[!\.,?:;])', "",
+                  ' '.join([token for token in tokens if token not in to_remove]))
+
+
+## function to remove short tokens
+def remove_by_token_len(doc, n):
+    tokens = nltk.word_tokenize(doc);
+    return re.sub(r' (?=[!\.,?:;])', "",
+                  ' '.join([token for token in tokens if len(token) > n]))
+
+## function to remove digits
+def remove_d(doc):
+    return re.sub(r'\d+', '', doc)
+
+## function to carry out stemming
+def stem_doc(doc, stemmer):
+    tokens = nltk.word_tokenize(doc)
+    return ' '.join([stemmer.stem(t) for t in tokens])
+
+
+########################################################################
+############################# clustering ###############################
+def k_means_clustering(X, k=2, initialisation='random'):
+    model = KMeans(k, init=initialisation, random_state=1)
+    model.fit(X)
+    cluster_labels = model.labels_
+    cluster_centers = model.cluster_centers_
+    return (model, cluster_labels, cluster_centers)
+
+def centroids_across_terms(X, centers, labels, title):
+    labels = sorted(set(labels))
+    centersFrame = pd.DataFrame(centers, index=labels, columns=X.columns)
+    centersFrame['cluster'] = labels
+    plt.figure(figsize=(10, 5))
+    plt.title(title)
+    parallel_coordinates(centersFrame, 'cluster', marker='o')
+    plt.legend(labels, loc='best')
+
+def agglom_clustering(X, k=2, simMethod='cosine', linkMethod='ward'):
+    model= AgglomerativeClustering(n_clusters=k, affinity=simMethod, linkage=linkMethod)
+    model.fit(X)
+    return (model, model.labels_)
+
+def visualise_dendrogram(X, linkageMethod='single', xlabel='', ylabel=''):
+    Z = linkage(X, linkageMethod)
+    plt.figure(figsize=(10, 7))
+    plt.title('Hierarchical Clustering Dendrogram')
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    dendrogram(Z, labels=X.index, leaf_rotation=90)
+
+def plot_clusters(X, labels, title, xlabel, ylabel):
+    clustersDF = pd.DataFrame([labels], columns=X.index)
+    plt.plot(clustersDF.iloc[0], color='green', marker='x', linewidth=0, markersize=10)
+    plt.title(title)
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.xticks(list(clustersDF.columns))
+    plt.yticks(np.arange(len(set(labels))))
+
+
+########################################################################
+######################### feature selection ############################
+########################################################################
+
+# a function that will allow us to pass the method for weighting, the method for selection, 
+# and the number of features to retain; 
+# it also has the option to output the scores of top n features
+def stat_univariate_fs(X, y, weight_method, selection_method, num_features, scores_to_print=25):
+    X_reduced = GenericUnivariateSelect(score_func=weight_method, mode=selection_method,
+					param=num_features).fit(X, y)
+    scores = pd.DataFrame(X_reduced.scores_)
+    columns = pd.DataFrame(X.columns)
+    features_scores = pd.concat([columns, scores], axis=1)
+    features_scores.columns = ['Attribute', 'Weight']
+    print("Top", scores_to_print, "features:")
+    print(features_scores.nlargest(scores_to_print, 'Weight'))
+    return X_reduced.transform(X)
+
+# a function that will allow us to use a specific algorithm 
+# for weighting and the number of features to retain
+# it also has the option to output the scores of top n features
+def clf_univariate_fs(X, y, learner, 
+                            num_features, scores_to_print=25):
+    learner = learner.fit(X, y)
+    scores = None
+    if 'feature_importances_' in learner.__dir__():
+        scores = pd.DataFrame(learner.feature_importances_)
+    elif 'coef_' in learner.__dir__():
+        scores = pd.DataFrame([np.max(np.abs(x)) for x in learner.coef_.T])
+    columns = pd.DataFrame(X.columns)
+    features_scores = pd.concat([columns, scores], axis=1)
+    features_scores.columns = ['Attribute', 'Weight']
+    print("Top", scores_to_print, "features:")
+    print(features_scores.nlargest(scores_to_print, 'Weight'))
+    return SelectFromModel(learner, prefit=True).transform(X)
+
+# a function that will allow us to use a specific algorithm 
+# for weighting and the number of features to retain from sequential selection
+def sequential_fs(X, y, learner, num_features, direction='forward'):
+	seq_selector = SequentialFeatureSelector(learner, 
+			n_features_to_select=num_features, direction=direction);
+	X_reduced = seq_selector.fit_transform(X, y);
+	print([feature for feature in seq_selector.get_feature_names_out()]);
+	return X_reduced;
+
+# a function that will allow us to use a specific algorithm 
+# for weighting and the number of features to retain from rfe selection
+def rfe_fs(X, y, learner, step=2):
+	rfe_selector = RFECV(learner, step=step);	
+	X_reduced = rfe_selector.fit_transform(X, y);
+	# print selected features - those that have a rank of 1
+	print([feature for feature in rfe_selector.get_feature_names_out()]);
+	return X_reduced;
