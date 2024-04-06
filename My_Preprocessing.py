@@ -238,6 +238,6 @@ def remove_stopwords(text):
 #stopwords removed
 def stop_words(dataset):
     # Apply remove_stopwords function to the 'text' column
-    dataset['text_without_stopwords'] = dataset['text'].apply(remove_stopwords)
+    dataset['text'] = dataset['text'].apply(remove_stopwords)
     return dataset
 
