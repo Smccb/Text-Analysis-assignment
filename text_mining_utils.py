@@ -120,7 +120,7 @@ def build_tfidf_matrix(docs, decode_error='replace', strip_accents=None, lowerca
 
 """function to train and x-validate across acc, rec, prec  
 and get the classification report"""
-def printClassifReport(clf, X, y, folds=5):
+def printClassifReport(clf, X, y, folds = 5):
     predictions = cross_val_predict(clf, X, y, cv=folds) 
     print(classification_report(y, predictions)) 
 

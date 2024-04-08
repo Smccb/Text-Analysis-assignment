@@ -14,17 +14,15 @@ def remove_Sarcasm_hashtag():
     file_path = 'Train_v1.txt'
     column_names = ['toRemove', 'isSarcastic', 'text']
 
-    # Read the dataset
     data = pd.read_csv(file_path, sep='\t', header=None, names=column_names)
 
-    # Define patterns to remove
     patterns = [
         r'#sarcasm\b',
         r'#sarcastic\b',
         r'#sarcastictweet\b'
     ]
 
-    # Remove patterns from text
+    #Remove patterns
     for pattern in patterns:
         data['text'] = data['text'].apply(lambda x: re.sub(pattern, '', x))
 
@@ -34,7 +32,6 @@ def remove_Sarcasm_hashtag():
     # Convert DataFrame to dictionary
     data_dict = data.to_dict()
 
-    # Save the dictionary to a JSON file
     with open('cleaned_#sarcasm.json', 'w') as f:
         json.dump(data_dict, f, indent=4)
 
@@ -46,22 +43,16 @@ def remove_Sarcasm_hashtag():
 def undersampling(dataset):
     # Count the number of instances in each class
     class_counts = dataset['isSarcastic'].value_counts()
-
-    # Find the class with more items
     majority_class = class_counts.idxmax()
-
-    # Find the class with fewer items
     minority_class = class_counts.idxmin()
 
-    # Count the number of instances in the minority class
     minority_class_count = class_counts[minority_class]
 
     majority_class_sampled = dataset[dataset['isSarcastic'] == majority_class].sample(n=minority_class_count, random_state=42)
 
-    # Concatenate the sampled majority class with the minority class
     balanced_data = pd.concat([majority_class_sampled, dataset[dataset['isSarcastic'] == minority_class]])
 
-    # Shuffle the balanced dataset
+    #Shuffle the balanced dataset
     balanced_data = balanced_data.sample(frac=1, random_state=42).reset_index(drop=True)
 
     return balanced_data
@@ -72,25 +63,11 @@ def undersampling(dataset):
 
 #Random
 def random_oversampling(dataset):
-    # Initialize RandomOverSampler
+    #Initialize RandomOverSampler
     ros = RandomOverSampler(random_state=42)
-    # Resample the dataset
+    #Resample the dataset
     X_resampled, y_resampled = ros.fit_resample(dataset.drop(columns=['isSarcastic']), dataset['isSarcastic'])
 
-    # Combine resampled features and target variable into a DataFrame
-    resampled_df = pd.DataFrame(X_resampled, columns=dataset.drop(columns=['isSarcastic']).columns)
-    resampled_df['isSarcastic'] = y_resampled
-
-    return resampled_df
-
-#SMOTE sampling
-def smote_oversampling(dataset):
-    # Initialize SMOTE
-    smote = SMOTE(random_state=42)
-    # Resample the dataset
-    X_resampled, y_resampled = smote.fit_resample(dataset.drop(columns=['isSarcastic']), dataset['isSarcastic'])
-
-    # Combine resampled features and target variable into a DataFrame
     resampled_df = pd.DataFrame(X_resampled, columns=dataset.drop(columns=['isSarcastic']).columns)
     resampled_df['isSarcastic'] = y_resampled
 
@@ -155,16 +132,12 @@ def replace_abbreviations(dataset):
                 tokens[i] = abbreviation_mapping[token.upper()]
         return ' '.join(tokens)
 
-    # Apply functions to remove hashtags and replace abbreviations to the entire 'text' column
-    dataset['text'] = dataset['text'].apply(lambda x: x.upper())  # Convert text to uppercase
+    dataset['text'] = dataset['text'].apply(lambda x: x.upper())
     dataset['text'] = dataset['text'].apply(replace_abbreviations)
 
-    # Restore original capitalization
     original_capitalization = lambda x: ''.join([a if b.islower() else a.lower() for a, b in zip(x, dataset['text'][0])])
     dataset['text'] = dataset['text'].apply(original_capitalization)
 
-    # Save the updated DataFrame to a JSON file
-    dataset.to_json('abbreviations_removed.json', orient='records', lines=True)
     return dataset
 
 ##################################################################
@@ -175,10 +148,8 @@ def replace_user_mentions(dataset):
     def remove_user_mentions(text):
         pattern = re.compile(r'@\d+')
         return pattern.sub('person', text)
-
-    # Apply remove_user_mentions function to the 'text' column
+    
     dataset['text'] = dataset['text'].apply(remove_user_mentions)
-    # Save the updated DataFrame if needed
     dataset.to_json("updated_data_without_mentions.json", orient='records', lines=True)
 
     return dataset
@@ -237,7 +208,6 @@ def remove_stopwords(text):
 
 #stopwords removed
 def stop_words(dataset):
-    # Apply remove_stopwords function to the 'text' column
     dataset['text'] = dataset['text'].apply(remove_stopwords)
     return dataset
 
